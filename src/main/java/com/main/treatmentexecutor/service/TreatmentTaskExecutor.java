@@ -6,61 +6,85 @@ import com.main.treatmentexecutor.model.enums.TaskStatus;
 import com.main.treatmentexecutor.repository.TreatmentPlanRepository;
 import com.main.treatmentexecutor.repository.TreatmentTaskRepository;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.stereotype.Service;
+
 import javax.annotation.PostConstruct;
+import javax.annotation.PreDestroy;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 @Service
 public class TreatmentTaskExecutor {
-    private final TreatmentPlanRepository planRepository;
+    @Autowired
+    private TreatmentPlanRepository planRepository;
 
-    private final TreatmentTaskRepository taskRepository;
+    @Autowired
+    private TreatmentTaskRepository taskRepository;
 
-    private final ThreadPoolTaskScheduler taskScheduler = new ThreadPoolTaskScheduler();
-
-    public TreatmentTaskExecutor(TreatmentPlanRepository planRepository, TreatmentTaskRepository taskRepository) {
-        this.planRepository = planRepository;
-        this.taskRepository = taskRepository;
-    }
+    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+    private static final long CHECK_INTERVAL_SECONDS = 10; // Check every 10 seconds
 
     @PostConstruct
-    public void init() {
-        taskScheduler.setPoolSize(5);
-        taskScheduler.initialize();
-        startScheduler();
+    public void startScheduler() {
+        scheduleNextRun();
     }
 
-    public void startScheduler() {
-        taskScheduler.scheduleAtFixedRate(this::generateTasks, 10000);
+    @PreDestroy
+    public void stopScheduler() {
+        scheduler.shutdown();
+        try {
+            if (!scheduler.awaitTermination(5, TimeUnit.SECONDS)) {
+                scheduler.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            scheduler.shutdownNow();
+        }
+    }
+
+    private void scheduleNextRun() {
+        CompletableFuture.runAsync(this::generateTasks, scheduler)
+                .thenRunAsync(() -> {
+                    try {
+                        TimeUnit.SECONDS.sleep(CHECK_INTERVAL_SECONDS);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        return;
+                    }
+                    scheduleNextRun(); // Schedule the next run recursively
+                });
     }
 
     private void generateTasks() {
-        List<TreatmentPlan> plans = planRepository.findByEndTimeAfterOrEndTimeIsNull(System.currentTimeMillis());
+        long currentTime = Instant.now().toEpochMilli();
+        LocalDateTime now = LocalDateTime.ofInstant(Instant.ofEpochMilli(currentTime), ZoneId.systemDefault());
+        List<TreatmentPlan> plans = planRepository.findByEndTimeAfterOrEndTimeIsNull(currentTime);
 
         for (TreatmentPlan plan : plans) {
-            LocalDateTime nextExecutionTime = calculateNextExecutionTime(plan);
-            if (nextExecutionTime != null) {
+            LocalDateTime nextExecutionTime = calculateNextExecutionTime(plan, now);
+            if (nextExecutionTime != null && nextExecutionTime.isBefore(now.plusMinutes(10))) {
                 createTreatmentTask(plan, nextExecutionTime);
             }
         }
     }
 
-    private LocalDateTime calculateNextExecutionTime(TreatmentPlan plan) {
-        LocalDateTime now = LocalDateTime.now();
+    private LocalDateTime calculateNextExecutionTime(TreatmentPlan plan, LocalDateTime referenceTime) {
         LocalDateTime startTime = LocalDateTime.ofInstant(Instant.ofEpochMilli(plan.getStartTime()), ZoneId.systemDefault());
 
-        if ("DAILY".equals(plan.getRecurrencePattern())) {
-            while (startTime.isBefore(now)) {
+        if (plan.getRecurrencePattern().equals("DAILY")) {
+            while (startTime.isBefore(referenceTime)) {
                 startTime = startTime.plusDays(1);
             }
             return startTime;
-        } else if ("WEEKLY".equals(plan.getRecurrencePattern())) {
-            while (startTime.isBefore(now)) {
+        }
+        if (plan.getRecurrencePattern().equals("WEEKLY")) {
+            while (startTime.isBefore(referenceTime)) {
                 startTime = startTime.plusWeeks(1);
             }
             return startTime;
@@ -74,6 +98,7 @@ public class TreatmentTaskExecutor {
         task.setTreatmentAction(plan.getTreatmentAction());
         task.setExecutionTime(executionTime);
         task.setTaskStatus(TaskStatus.ACTIVE);
+
         taskRepository.save(task);
     }
 }
