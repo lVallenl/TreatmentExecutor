@@ -5,7 +5,6 @@ import com.main.treatmentexecutor.model.TreatmentTask;
 import com.main.treatmentexecutor.model.enums.TaskStatus;
 import com.main.treatmentexecutor.repository.TreatmentPlanRepository;
 import com.main.treatmentexecutor.repository.TreatmentTaskRepository;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.PostConstruct;
@@ -21,14 +20,17 @@ import java.util.concurrent.TimeUnit;
 
 @Service
 public class TreatmentTaskExecutor {
-    @Autowired
-    private TreatmentPlanRepository planRepository;
+    private final TreatmentPlanRepository planRepository;
 
-    @Autowired
-    private TreatmentTaskRepository taskRepository;
+    private final TreatmentTaskRepository taskRepository;
 
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
     private static final long CHECK_INTERVAL_SECONDS = 10; // Check every 10 seconds
+
+    public TreatmentTaskExecutor(TreatmentPlanRepository planRepository, TreatmentTaskRepository taskRepository) {
+        this.planRepository = planRepository;
+        this.taskRepository = taskRepository;
+    }
 
     @PostConstruct
     public void startScheduler() {
