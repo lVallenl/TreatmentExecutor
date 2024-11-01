@@ -5,14 +5,12 @@ import com.main.treatmentexecutor.model.TreatmentTask;
 import com.main.treatmentexecutor.model.enums.TaskStatus;
 import com.main.treatmentexecutor.repository.TreatmentPlanRepository;
 import com.main.treatmentexecutor.repository.TreatmentTaskRepository;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.stereotype.Service;
 import javax.annotation.PostConstruct;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 @Service
@@ -45,7 +43,7 @@ public class TreatmentTaskExecutor {
         for (TreatmentPlan plan : plans) {
             LocalDateTime nextExecutionTime = calculateNextExecutionTime(plan);
             if (nextExecutionTime != null) {
-                createTreatmentTask(plan, nextExecutionTime);
+                createTreatmentTask(plan);
             }
         }
     }
@@ -68,11 +66,10 @@ public class TreatmentTaskExecutor {
         return null;
     }
 
-    private void createTreatmentTask(TreatmentPlan plan, LocalDateTime executionTime) {
+    private void createTreatmentTask(TreatmentPlan plan) {
         TreatmentTask task = new TreatmentTask();
         task.setSubjectPatient(plan.getSubjectPatient());
         task.setTreatmentAction(plan.getTreatmentAction());
-        task.setExecutionTime(executionTime);
         task.setTaskStatus(TaskStatus.ACTIVE);
         taskRepository.save(task);
     }
