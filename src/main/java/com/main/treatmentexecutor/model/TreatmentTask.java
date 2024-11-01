@@ -24,6 +24,7 @@ public class TreatmentTask {
 
     private TreatmentAction treatmentAction;
 
+    //"Start time: timestamp of the earliest time the task can be completed" - ? Why "startTime"?
     private Long startTime;
 
     private LocalDateTime executionTime;
