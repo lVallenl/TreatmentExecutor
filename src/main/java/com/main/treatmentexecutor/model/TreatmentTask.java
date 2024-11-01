@@ -26,5 +26,7 @@ public class TreatmentTask {
 
     private Long startTime;
 
+    private LocalDateTime executionTime;
+
     private TaskStatus taskStatus;
 }
